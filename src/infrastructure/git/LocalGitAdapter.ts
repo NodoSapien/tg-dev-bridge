@@ -1,19 +1,36 @@
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { IGitContextProvider, GitContext } from "../../domain/ports/IGitContextProvider.js";
 
 export class LocalGitAdapter implements IGitContextProvider {
-  constructor(private readonly workingDir: string = process.cwd()) {}
+  private readonly safeWorkingDir: string;
+
+  constructor(workingDir: string = process.cwd()) {
+    try {
+      this.safeWorkingDir = fs.existsSync(workingDir) ? fs.realpathSync(workingDir) : workingDir;
+    } catch {
+      this.safeWorkingDir = workingDir;
+    }
+  }
 
   private runGit(args: string[]): string | null {
     try {
       const output = execFileSync("git", args, {
-        cwd: this.workingDir,
+        cwd: this.safeWorkingDir,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "ignore"],
+        shell: false,
+        timeout: 3000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
       });
-      return output.trim();
+
+      // Sanitizar caracteres de control o secuencias ANSI
+      return output
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+        .trim();
     } catch {
       return null;
     }
@@ -29,36 +46,35 @@ export class LocalGitAdapter implements IGitContextProvider {
   }
 
   private resolveRepoName(): string {
-    // 1. Intentar obtener el nombre del remote origin (ej. repo desde git@github.com:org/repo.git)
     const remoteUrl = this.runGit(["remote", "get-url", "origin"]);
     if (remoteUrl) {
       const cleanUrl = remoteUrl.replace(/\.git$/, "");
       const repoFromRemote = cleanUrl.split(/[/:]/).pop();
       if (repoFromRemote && repoFromRemote.trim()) {
-        return repoFromRemote.trim();
+        const sanitized = repoFromRemote.replace(/[^a-zA-Z0-9_.-]/g, "").trim();
+        if (sanitized) return sanitized;
       }
     }
 
-    // 2. Intentar obtener la raíz del repositorio local
     const rootPath = this.runGit(["rev-parse", "--show-toplevel"]);
     if (rootPath) {
-      return path.basename(rootPath);
+      const base = path.basename(rootPath).replace(/[^a-zA-Z0-9_.-]/g, "").trim();
+      if (base) return base;
     }
 
-    // 3. Fallback al nombre del directorio actual
-    return path.basename(this.workingDir) || "unknown-repo";
+    const currentBase = path.basename(this.safeWorkingDir).replace(/[^a-zA-Z0-9_.-]/g, "").trim();
+    return currentBase || "unknown-repo";
   }
 
   private resolveBranch(): string {
     const branch = this.runGit(["branch", "--show-current"]);
     if (branch && branch.trim()) {
-      return branch.trim();
+      return branch.replace(/[^a-zA-Z0-9_./-]/g, "").trim();
     }
 
-    // Si está en detached HEAD o sin rama
     const detached = this.runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
     if (detached && detached.trim() && detached.trim() !== "HEAD") {
-      return detached.trim();
+      return detached.replace(/[^a-zA-Z0-9_./-]/g, "").trim();
     }
 
     return "main";
@@ -67,20 +83,20 @@ export class LocalGitAdapter implements IGitContextProvider {
   private resolveAuthor(): string {
     const gitUser = this.runGit(["config", "user.name"]);
     if (gitUser && gitUser.trim()) {
-      return gitUser.trim();
+      return gitUser.slice(0, 80).trim();
     }
 
     if (process.env["DEV_NAME"] && process.env["DEV_NAME"].trim()) {
-      return process.env["DEV_NAME"].trim();
+      return process.env["DEV_NAME"].slice(0, 80).trim();
     }
 
     try {
       const systemUser = os.userInfo().username;
       if (systemUser && systemUser.trim()) {
-        return systemUser.trim();
+        return systemUser.slice(0, 80).trim();
       }
     } catch {
-      // Ignorar si userInfo falla en entornos sandbox
+      // Ignorar si userInfo falla en sandbox
     }
 
     return "Developer";
@@ -88,6 +104,8 @@ export class LocalGitAdapter implements IGitContextProvider {
 
   private resolveShortHash(): string | undefined {
     const hash = this.runGit(["rev-parse", "--short", "HEAD"]);
-    return hash && hash.trim() ? hash.trim() : undefined;
+    if (!hash || !hash.trim()) return undefined;
+    const cleanHash = hash.replace(/[^a-f0-9]/gi, "").trim();
+    return cleanHash.length >= 4 && cleanHash.length <= 12 ? cleanHash : undefined;
   }
 }

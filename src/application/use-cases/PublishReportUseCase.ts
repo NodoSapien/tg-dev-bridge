@@ -3,6 +3,7 @@ import type { BotProfile } from "../../domain/entities/BotProfile.js";
 import type { IGitContextProvider } from "../../domain/ports/IGitContextProvider.js";
 import type { ITemplateEngine, TemplateContext } from "../../domain/ports/ITemplateEngine.js";
 import type { IDynamicNotificationService } from "../../domain/ports/IDynamicNotificationService.js";
+import { SecretRedactor } from "../../domain/services/SecretRedactor.js";
 import { TelegramProfileResolver } from "../../infrastructure/config/TelegramProfileResolver.js";
 import { type Result, ok, err } from "../../shared/types/Result.js";
 
@@ -28,7 +29,14 @@ export class PublishReportUseCase {
 
       switch (field.type) {
         case "string[]":
-          fieldSchema = z.array(z.string().min(1, `El valor en ${field.label} no puede estar vacío`));
+          fieldSchema = z
+            .array(
+              z
+                .string()
+                .min(1, `El valor en ${field.label} no puede estar vacío`)
+                .max(1000, `Cada elemento en ${field.label} no puede exceder 1000 caracteres`)
+            )
+            .max(20, `No puede incluir más de 20 elementos en ${field.label}`);
           if (field.required) {
             fieldSchema = (fieldSchema as z.ZodArray<z.ZodString>).min(1, `Debe proveer al menos un elemento para ${field.label}`);
           }
@@ -41,7 +49,9 @@ export class PublishReportUseCase {
           break;
         case "string":
         default:
-          fieldSchema = z.string();
+          fieldSchema = z
+            .string()
+            .max(2000, `${field.label} no puede exceder 2000 caracteres`);
           if (field.required) {
             fieldSchema = (fieldSchema as z.ZodString).min(1, `${field.label} no puede estar vacío`);
           }
@@ -76,7 +86,10 @@ export class PublishReportUseCase {
 
       const validatedPayload = parseResult.data;
 
-      // 2. Construir contexto (Git + Timestamp)
+      // 2. DLP Inspection (Modo Estricto): Aborta la ejecución si detecta cualquier secreto
+      SecretRedactor.assertSafePayload(validatedPayload);
+
+      // 3. Construir contexto (Git + Timestamp)
       const context: TemplateContext = {};
 
       if (profile.contextProviders.includeGitInfo) {
@@ -94,13 +107,13 @@ export class PublishReportUseCase {
         context.timestamp = `${now.toISOString().replace("T", " ").substring(0, 19)} UTC`;
       }
 
-      // 3. Renderizar HTML con el motor de plantillas
+      // 4. Renderizar HTML con el motor de plantillas
       const renderedHtml = this.templateEngine.render(profile, validatedPayload, context);
 
-      // 4. Resolver credenciales de Telegram para este perfil
+      // 5. Resolver credenciales de Telegram para este perfil
       const credentials = TelegramProfileResolver.resolve(profile.telegram);
 
-      // 5. Enviar mensaje a Telegram
+      // 6. Enviar mensaje a Telegram
       await this.notificationService.sendMessage(renderedHtml, credentials);
 
       return ok({

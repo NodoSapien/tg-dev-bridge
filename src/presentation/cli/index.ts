@@ -6,6 +6,7 @@ import { LocalGitAdapter } from "../../infrastructure/git/LocalGitAdapter.js";
 import { DynamicHtmlFormatter } from "../../infrastructure/telegram/DynamicHtmlFormatter.js";
 import { TelegramAdapter } from "../../infrastructure/telegram/TelegramAdapter.js";
 import { PublishReportUseCase } from "../../application/use-cases/PublishReportUseCase.js";
+import { SecurityError } from "../../shared/errors/SecurityError.js";
 import { executeInitBot } from "./commands/initBot.js";
 import type { BotProfile } from "../../domain/entities/BotProfile.js";
 
@@ -100,80 +101,91 @@ async function main(): Promise<void> {
     program.option(flagDef, field.description);
   }
 
-  program.parse(process.argv);
-  const options = program.opts<Record<string, unknown>>();
+  program.action(async () => {
+    const options = program.opts<Record<string, unknown>>();
 
-  let payload: Record<string, unknown> = {};
+    let payload: Record<string, unknown> = {};
 
-  const shouldUseStdin = Boolean(
-    options["stdin"] || (!process.stdin.isTTY && process.argv.length <= 3)
-  );
+    const shouldUseStdin = Boolean(
+      options["stdin"] || (!process.stdin.isTTY && process.argv.length <= 3)
+    );
 
-  if (shouldUseStdin) {
-    const rawStdin = await readStdin();
-    if (!rawStdin) {
-      console.error("❌ Error: No se recibió contenido JSON en stdin.");
-      process.exit(1);
-    }
-    try {
-      payload = JSON.parse(rawStdin) as Record<string, unknown>;
-    } catch {
-      console.error("❌ Error: El contenido de stdin no es un JSON válido.");
-      process.exit(1);
-    }
-  } else {
-    // Mapear opciones de Commander al payload del perfil
-    for (const field of profile.fields) {
-      const kebab = toKebabCase(field.key);
-      const camel = field.key;
+    if (shouldUseStdin) {
+      const rawStdin = await readStdin();
+      if (!rawStdin) {
+        console.error("❌ Error: No se recibió contenido JSON en stdin.");
+        process.exit(1);
+      }
+      try {
+        payload = JSON.parse(rawStdin) as Record<string, unknown>;
+      } catch {
+        console.error("❌ Error: El contenido de stdin no es un JSON válido.");
+        process.exit(1);
+      }
+    } else {
+      // Mapear opciones de Commander al payload del perfil
+      for (const field of profile.fields) {
+        const kebab = toKebabCase(field.key);
+        const camel = field.key;
 
-      if (options[camel] !== undefined) {
-        payload[field.key] = options[camel];
-      } else if (options[kebab] !== undefined) {
-        payload[field.key] = options[kebab];
-      } else if (camel === "completedChanges" && options["done"] !== undefined) {
-        payload["completedChanges"] = options["done"];
-      } else if (camel === "nextSteps" && options["next"] !== undefined) {
-        payload["nextSteps"] = options["next"];
-      } else if (camel === "blockers" && options["blocker"] !== undefined) {
-        payload["blockers"] = options["blocker"];
+        if (options[camel] !== undefined) {
+          payload[field.key] = options[camel];
+        } else if (options[kebab] !== undefined) {
+          payload[field.key] = options[kebab];
+        } else if (camel === "completedChanges" && options["done"] !== undefined) {
+          payload["completedChanges"] = options["done"];
+        } else if (camel === "nextSteps" && options["next"] !== undefined) {
+          payload["nextSteps"] = options["next"];
+        } else if (camel === "blockers" && options["blocker"] !== undefined) {
+          payload["blockers"] = options["blocker"];
+        }
       }
     }
-  }
 
-  // Soporte para sobrescribir autor si vino por flag
-  const customAuthor = options["author"] ? String(options["author"]) : undefined;
+    // Soporte para sobrescribir autor si vino por flag
+    const customAuthor = options["author"] ? String(options["author"]) : undefined;
 
-  try {
-    const gitAdapter = new LocalGitAdapter();
-    // Si viene customAuthor, envolver para devolverlo en el contexto Git
-    const gitContextProvider = customAuthor
-      ? {
-          getContext: () => {
-            const ctx = gitAdapter.getContext();
-            return { ...ctx, author: customAuthor };
-          },
+    try {
+      const gitAdapter = new LocalGitAdapter();
+      // Si viene customAuthor, envolver para devolverlo en el contexto Git
+      const gitContextProvider = customAuthor
+        ? {
+            getContext: () => {
+              const ctx = gitAdapter.getContext();
+              return { ...ctx, author: customAuthor };
+            },
+          }
+        : gitAdapter;
+
+      const formatter = new DynamicHtmlFormatter();
+      const telegramAdapter = new TelegramAdapter();
+      const useCase = new PublishReportUseCase(gitContextProvider, formatter, telegramAdapter);
+
+      const result = await useCase.execute(profile, payload);
+
+      if (!result.success) {
+        if (result.error instanceof SecurityError) {
+          console.error(`\n🛡️ BLOQUEO DE SEGURIDAD (DLP):\n${result.error.message}\n`);
+        } else {
+          console.error(`❌ Error al publicar en Telegram: ${result.error.message}`);
         }
-      : gitAdapter;
+        process.exit(1);
+      }
 
-    const formatter = new DynamicHtmlFormatter();
-    const telegramAdapter = new TelegramAdapter();
-    const useCase = new PublishReportUseCase(gitContextProvider, formatter, telegramAdapter);
-
-    const result = await useCase.execute(profile, payload);
-
-    if (!result.success) {
-      console.error(`❌ ${result.error.message}`);
+      console.log(`🚀 Reporte publicado con éxito en Telegram! [Bot: ${result.data.botId} | Tool: ${result.data.toolName}]`);
+      process.exit(0);
+    } catch (error) {
+      if (error instanceof SecurityError) {
+        console.error(`\n🛡️ BLOQUEO DE SEGURIDAD:\n${error.message}\n`);
+        process.exit(1);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Error fatal: ${message}`);
       process.exit(1);
     }
+  });
 
-    console.log(`🚀 Reporte publicado con éxito en Telegram! [Bot: ${result.data.botId} | Tool: ${result.data.toolName}]`);
-    process.exit(0);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`❌ Error fatal: ${message}`);
-    process.exit(1);
-  }
+  await program.parseAsync(process.argv);
 }
 
 main().catch((err) => {

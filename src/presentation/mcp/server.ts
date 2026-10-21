@@ -8,6 +8,7 @@ import { LocalGitAdapter } from "../../infrastructure/git/LocalGitAdapter.js";
 import { DynamicHtmlFormatter } from "../../infrastructure/telegram/DynamicHtmlFormatter.js";
 import { TelegramAdapter } from "../../infrastructure/telegram/TelegramAdapter.js";
 import { PublishReportUseCase } from "../../application/use-cases/PublishReportUseCase.js";
+import { SecurityError } from "../../shared/errors/SecurityError.js";
 import type { BotProfile } from "../../domain/entities/BotProfile.js";
 
 function extractProfileName(args: string[]): string {
@@ -107,12 +108,17 @@ async function runMcpServer(): Promise<void> {
         const result = await useCase.execute(profile, rawArgs);
 
         if (!result.success) {
+          const isSecurity = result.error instanceof SecurityError;
+          const errorHeader = isSecurity
+            ? "🛡️ BLOQUEO DE SEGURIDAD (DLP ACTIVADO):"
+            : "Error al publicar el reporte en Telegram:";
+
           return {
             isError: true,
             content: [
               {
                 type: "text" as const,
-                text: `Error al publicar el reporte en Telegram:\n${result.error.message}`,
+                text: `${errorHeader}\n${result.error.message}`,
               },
             ],
           };

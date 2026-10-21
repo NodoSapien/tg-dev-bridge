@@ -1,4 +1,8 @@
 import type { INotificationService } from "../../domain/ports/INotificationService.js";
+import type {
+  IDynamicNotificationService,
+  ResolvedTelegramCredentials,
+} from "../../domain/ports/IDynamicNotificationService.js";
 import type { DevUpdate } from "../../domain/entities/DevUpdate.js";
 import type { AppConfig } from "../config/env.js";
 import { MessageFormatter } from "./MessageFormatter.js";
@@ -10,22 +14,23 @@ interface TelegramApiResponse {
   readonly error_code?: number;
 }
 
-export class TelegramAdapter implements INotificationService {
-  constructor(private readonly config: AppConfig) {}
+export class TelegramAdapter implements INotificationService, IDynamicNotificationService {
+  constructor(private readonly config?: AppConfig) {}
 
-  public async sendDevUpdate(update: DevUpdate): Promise<void> {
-    const messageHtml = MessageFormatter.formatDevUpdate(update);
-
-    const endpoint = `https://api.telegram.org/bot${this.config.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  public async sendMessage(
+    htmlText: string,
+    credentials: ResolvedTelegramCredentials
+  ): Promise<void> {
+    const endpoint = `https://api.telegram.org/bot${credentials.botToken}/sendMessage`;
 
     const body: Record<string, unknown> = {
-      chat_id: this.config.TELEGRAM_CHAT_ID,
-      text: messageHtml,
+      chat_id: credentials.chatId,
+      text: htmlText,
       parse_mode: "HTML",
     };
 
-    if (this.config.TELEGRAM_THREAD_ID !== undefined) {
-      body["message_thread_id"] = this.config.TELEGRAM_THREAD_ID;
+    if (credentials.threadId !== undefined) {
+      body["message_thread_id"] = credentials.threadId;
     }
 
     let response: Response;
@@ -61,5 +66,18 @@ export class TelegramAdapter implements INotificationService {
         telegramErrorCode: responseData?.error_code,
       });
     }
+  }
+
+  public async sendDevUpdate(update: DevUpdate): Promise<void> {
+    if (!this.config) {
+      throw new Error("TelegramAdapter fue inicializado sin AppConfig para llamadas estáticas");
+    }
+
+    const messageHtml = MessageFormatter.formatDevUpdate(update);
+    await this.sendMessage(messageHtml, {
+      botToken: this.config.TELEGRAM_BOT_TOKEN,
+      chatId: this.config.TELEGRAM_CHAT_ID,
+      threadId: this.config.TELEGRAM_THREAD_ID,
+    });
   }
 }

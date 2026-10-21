@@ -1,77 +1,97 @@
 # Instrucciones para Agentes de Desarrollo (Claude Code / OpenCode / AgU)
 
-Este repositorio y los proyectos que integran `tg-dev-bridge` utilizan un protocolo de **ChatOps automático** para notificar al equipo en Telegram cada vez que se concluye una tarea, feature o refactorización.
+Este repositorio y los proyectos que integran `tg-dev-bridge` operan bajo una **arquitectura multi-bot y template engine** para notificar al equipo en Telegram al concluir tareas, lanzar versiones o reportar incidentes.
 
 ---
 
-## 🔔 Protocolo de Notificación al Finalizar Tareas
+## 🔔 Perfiles de Bots Disponibles
 
-Cada vez que termines una tarea o el usuario confirme que los cambios son satisfactorios, **debes invocar el reporte de desarrollo** antes de cerrar la sesión o dar por concluido el turno.
+La herramienta cuenta con perfiles declarativos en `profiles/`:
 
-### 1. Detección de Información Requerida
-
-Antes de enviar el reporte:
-1. **Cambios realizados (`completedChanges`):** Resume en viñetas claras y técnicas lo que acabas de implementar, corregir o refactorizar.
-2. **Siguientes pasos (`nextSteps`):** 
-   - Revisa si existe un archivo `TODO.md`, `ROADMAP.md` o el spec de la tarea en curso.
-   - Si existen tareas pendientes en el archivo de tareas, toma las siguientes inmediatas.
-   - Si no existe un archivo de tareas, deduce lógicamente los siguientes pasos en base al contexto o formula las recomendaciones técnicas a seguir.
-3. **Bloqueos o notas (`blockers` - opcional):**
-   - Si encontraste alguna limitación externa, duda de diseño o decisión pendiente que requiera la intervención de un compañero o del usuario, indícala explícitamente.
+| Perfil | MCP Tool | CLI Flag | Propósito |
+|---|---|---|---|
+| `dev-update` (default) | `send_dev_update` | `tg-bridge` (o `--profile dev-update`) | Reporte de cambios y siguientes pasos al terminar una tarea |
+| `release-notes` | `send_release_notes` | `tg-bridge --profile release-notes` | Anuncio de nueva versión, novedades y enlaces |
+| `bug-report` | `send_bug_report` | `tg-bridge --profile bug-report` | Alerta de incidente o reporte estructurado de bugs |
 
 ---
 
 ## 🛠️ Modos de Invocación
 
-### Opción A: Vía MCP Tool (Recomendado para Claude Code)
-Invoca la herramienta `send_dev_update` con los siguientes parámetros:
+### 1. Perfil por Defecto: Reporte de Desarrollo (`dev-update`)
 
+#### Vía MCP Tool (Claude Code):
+Invoca `send_dev_update`:
 ```json
 {
   "completedChanges": [
-    "Implementada la entidad DevUpdate y puertos de notificación",
-    "Agregada validación de variables de entorno con Zod"
+    "Implementado el motor de plantillas dinámico DynamicHtmlFormatter",
+    "Añadido subcomando de scaffolding init en el CLI"
   ],
   "nextSteps": [
-    "Crear el adaptador de Telegram con fetch nativo",
-    "Configurar los comandos CLI con commander"
+    "Documentar creación de nuevos bots en README.md",
+    "Configurar repositorio como GitHub Template"
   ],
-  "blockers": [
-    "Pendiente confirmar el Chat ID definitivo del grupo de producción"
-  ]
+  "blockers": []
 }
 ```
 
-### Opción B: Vía CLI (Para terminales, OpenCode, AgU o scripts Bash)
-Si no cuentas con el MCP registrado o estás ejecutando un script de terminal, usa el binario `tg-dev-bridge`:
-
+#### Vía CLI (Terminal / OpenCode / AgU):
 ```bash
-tg-dev-bridge \
-  -d "Implementada la entidad DevUpdate y puertos de notificación" "Agregada validación con Zod" \
-  -n "Crear el adaptador de Telegram con fetch nativo" "Configurar CLI con commander" \
-  -b "Pendiente confirmar Chat ID de producción"
+tg-bridge \
+  -d "Implementado motor DynamicHtmlFormatter" "Añadido comando init" \
+  -n "Documentar creación de bots" "Configurar GitHub Template"
 ```
 
-O enviando un JSON por entrada estándar:
+---
+
+### 2. Perfil de Lanzamiento: Notas de Versión (`release-notes`)
+
+#### Vía MCP Tool:
+Registrado con `--profile release-notes`, invoca `send_release_notes`:
+```json
+{
+  "version": "v2.0.0",
+  "highlights": [
+    "Arquitectura extensible con perfiles declarativos",
+    "Soporte dinámico para MCP Server y CLI",
+    "Comando de scaffolding tg-bridge init"
+  ],
+  "breakingChanges": [
+    "El flag de versión interna de la app ahora es -v, --cli-version para no colisionar con versiones de releases"
+  ],
+  "deployUrl": "https://github.com/usuario/tg-dev-bridge/releases/tag/v2.0.0"
+}
+```
+
+#### Vía CLI:
+```bash
+tg-bridge --profile release-notes \
+  --version "v2.0.0" \
+  --highlights "Arquitectura extensible de perfiles" "Scaffolding tg-bridge init" \
+  --deploy-url "https://github.com/usuario/tg-dev-bridge"
+```
+
+---
+
+### 3. Vía JSON directo (stdin)
+Cualquier perfil acepta su payload por `stdin`:
 
 ```bash
-cat << 'EOF' | tg-dev-bridge --stdin
+cat << 'EOF' | tg-bridge --profile bug-report --stdin
 {
-  "completedChanges": [
-    "Implementada la entidad DevUpdate",
-    "Agregada validación con Zod"
-  ],
-  "nextSteps": [
-    "Crear adaptador Telegram",
-    "Configurar CLI"
-  ]
+  "severity": "Alta",
+  "summary": "Falla de autenticación en endpoints protegidos",
+  "stepsToReproduce": ["Enviar token expirado", "Verificar que responde 500 en lugar de 401"]
 }
 EOF
 ```
 
 ---
 
-## ⚠️ Reglas Importantes
-- **Autodetección:** No es necesario pasar nombre de repositorio, rama ni autor; la herramienta los extrae automáticamente desde Git (`user.name`, `branch --show-current`, `origin`).
-- **Sanitización:** Los caracteres `< > & "` se escapan automáticamente en HTML antes de enviarse a Telegram.
-- **Credenciales:** La herramienta busca las credenciales en el archivo `.env` del directorio de trabajo o en `~/.config/tg-dev-bridge/.env`.
+## ⚙️ Creación de Nuevos Bots
+Para crear un nuevo bot en cualquier proyecto:
+```bash
+tg-bridge init mi-bot --preset <dev-update|release-notes|bug-report|custom>
+```
+Esto genera `profiles/mi-bot.json` listo para usar inmediatamente.

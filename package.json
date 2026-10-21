@@ -5,7 +5,9 @@
   "type": "module",
   "bin": {
     "tg-dev-bridge": "./dist/presentation/cli/index.js",
-    "tg-dev-bridge-mcp": "./dist/presentation/mcp/server.js"
+    "tg-bridge": "./dist/presentation/cli/index.js",
+    "tg-dev-bridge-mcp": "./dist/presentation/mcp/server.js",
+    "tg-bridge-mcp": "./dist/presentation/mcp/server.js"
   },
   "scripts": {
     "build": "tsc",

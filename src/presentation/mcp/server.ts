@@ -3,51 +3,108 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { loadConfig } from "../../infrastructure/config/env.js";
+import { ProfileLoader } from "../../infrastructure/config/ProfileLoader.js";
 import { LocalGitAdapter } from "../../infrastructure/git/LocalGitAdapter.js";
+import { DynamicHtmlFormatter } from "../../infrastructure/telegram/DynamicHtmlFormatter.js";
 import { TelegramAdapter } from "../../infrastructure/telegram/TelegramAdapter.js";
-import { PublishDevUpdateUseCase } from "../../application/use-cases/PublishDevUpdateUseCase.js";
+import { PublishReportUseCase } from "../../application/use-cases/PublishReportUseCase.js";
+import type { BotProfile } from "../../domain/entities/BotProfile.js";
+
+function extractProfileName(args: string[]): string {
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === "--profile" || args[i] === "-P") && args[i + 1]) {
+      return args[i + 1]!;
+    }
+  }
+  return process.env["BOT_PROFILE"] || "dev-update";
+}
+
+function buildMcpToolShape(profile: BotProfile): Record<string, z.ZodTypeAny> {
+  const shape: Record<string, z.ZodTypeAny> = {};
+
+  for (const field of profile.fields) {
+    let fieldZod: z.ZodTypeAny;
+
+    switch (field.type) {
+      case "string[]":
+        fieldZod = z.array(z.string().min(1)).describe(field.description);
+        if (field.required) {
+          fieldZod = (fieldZod as z.ZodArray<z.ZodString>).min(1, `Debe incluir al menos un valor en ${field.label}`);
+        }
+        break;
+      case "number":
+        fieldZod = z.number().describe(field.description);
+        break;
+      case "boolean":
+        fieldZod = z.boolean().describe(field.description);
+        break;
+      case "string":
+      default:
+        fieldZod = z.string().describe(field.description);
+        if (field.required) {
+          fieldZod = (fieldZod as z.ZodString).min(1, `${field.label} es requerido`);
+        }
+        break;
+    }
+
+    if (!field.required) {
+      fieldZod = fieldZod.optional();
+    }
+
+    shape[field.key] = fieldZod;
+  }
+
+  // Soporte opcional para sobrescribir autor si el usuario o agente lo desea
+  shape["customAuthor"] = z
+    .string()
+    .optional()
+    .describe("Opcional: Sobrescribe el autor de Git detectado");
+
+  return shape;
+}
 
 async function runMcpServer(): Promise<void> {
+  const profileName = extractProfileName(process.argv);
+  let profile: BotProfile;
+
+  try {
+    profile = ProfileLoader.load(profileName);
+  } catch (error) {
+    console.error(`Error crítico al cargar perfil '${profileName}':`, error);
+    process.exit(1);
+  }
+
   const server = new McpServer({
-    name: "tg-dev-bridge",
+    name: `tg-bridge-${profile.botId}`,
     version: "1.0.0",
   });
 
+  const toolShape = buildMcpToolShape(profile);
+
   server.tool(
-    "send_dev_update",
-    "Publica un reporte estructurado de desarrollo (cambios realizados, siguientes pasos y bloqueos) en el grupo de Telegram del equipo.",
-    {
-      completedChanges: z
-        .array(z.string().min(1, "El cambio no puede estar vacío"))
-        .min(1, "Debe proveer al menos un cambio realizado")
-        .describe("Lista de cambios implementados en la sesión de trabajo"),
-      nextSteps: z
-        .array(z.string().min(1, "El siguiente paso no puede estar vacío"))
-        .min(1, "Debe proveer al menos un siguiente paso")
-        .describe("Lista de qué tareas o pasos siguen a continuación"),
-      blockers: z
-        .array(z.string().min(1, "El bloqueo no puede estar vacío"))
-        .optional()
-        .describe("Dudas, blockers o notas que requieran atención de otro miembro"),
-      customAuthor: z
-        .string()
-        .optional()
-        .describe("Sobrescribe el autor de Git si se desea especificar otro nombre"),
-    },
+    profile.toolName,
+    profile.toolDescription,
+    toolShape,
     async (args) => {
       try {
-        const config = loadConfig();
-        const gitAdapter = new LocalGitAdapter();
-        const telegramAdapter = new TelegramAdapter(config);
-        const useCase = new PublishDevUpdateUseCase(gitAdapter, telegramAdapter);
+        const rawArgs = args as Record<string, unknown>;
+        const customAuthor = rawArgs["customAuthor"] ? String(rawArgs["customAuthor"]) : undefined;
 
-        const result = await useCase.execute({
-          completedChanges: args.completedChanges,
-          nextSteps: args.nextSteps,
-          blockers: args.blockers,
-          customAuthor: args.customAuthor,
-        });
+        const gitAdapter = new LocalGitAdapter();
+        const gitContextProvider = customAuthor
+          ? {
+              getContext: () => {
+                const ctx = gitAdapter.getContext();
+                return { ...ctx, author: customAuthor };
+              },
+            }
+          : gitAdapter;
+
+        const formatter = new DynamicHtmlFormatter();
+        const telegramAdapter = new TelegramAdapter();
+        const useCase = new PublishReportUseCase(gitContextProvider, formatter, telegramAdapter);
+
+        const result = await useCase.execute(profile, rawArgs);
 
         if (!result.success) {
           return {
@@ -55,18 +112,17 @@ async function runMcpServer(): Promise<void> {
             content: [
               {
                 type: "text" as const,
-                text: `Error al publicar el reporte en Telegram: ${result.error.message}`,
+                text: `Error al publicar el reporte en Telegram:\n${result.error.message}`,
               },
             ],
           };
         }
 
-        const update = result.data;
         return {
           content: [
             {
               type: "text" as const,
-              text: `✅ Reporte de desarrollo publicado con éxito en Telegram.\n• Repositorio: ${update.repoName}\n• Rama: ${update.branch}\n• Autor: ${update.author}\n• Cambios: ${update.completedChanges.length}\n• Próximos pasos: ${update.nextSteps.length}`,
+              text: `✅ Reporte publicado exitosamente en Telegram.\n• Bot: ${result.data.botId}\n• Tool: ${result.data.toolName}`,
             },
           ],
         };
@@ -77,7 +133,7 @@ async function runMcpServer(): Promise<void> {
           content: [
             {
               type: "text" as const,
-              text: `Fallo inesperado al ejecutar send_dev_update: ${message}`,
+              text: `Fallo inesperado al ejecutar ${profile.toolName}: ${message}`,
             },
           ],
         };
@@ -87,10 +143,10 @@ async function runMcpServer(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("tg-dev-bridge MCP Server corriendo en stdio");
+  console.error(`tg-bridge MCP Server corriendo en stdio [Perfil: ${profile.botId} | Tool: ${profile.toolName}]`);
 }
 
 runMcpServer().catch((error) => {
-  console.error("Error crítico al iniciar tg-dev-bridge MCP Server:", error);
+  console.error("Error crítico al iniciar tg-bridge MCP Server:", error);
   process.exit(1);
 });

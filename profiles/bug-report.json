@@ -1,0 +1,45 @@
+{
+  "botId": "bug-report",
+  "toolName": "send_bug_report",
+  "toolDescription": "Envía una alerta o reporte estructurado de bug/incidente a Telegram",
+  "telegram": {
+    "tokenEnvVar": "TELEGRAM_BOT_TOKEN",
+    "chatIdEnvVar": "TELEGRAM_CHAT_ID",
+    "threadIdEnvVar": "TELEGRAM_THREAD_ID"
+  },
+  "contextProviders": {
+    "includeGitInfo": true,
+    "includeTimestamp": true
+  },
+  "fields": [
+    {
+      "key": "severity",
+      "label": "🔥 Severidad",
+      "type": "string",
+      "required": true,
+      "description": "Nivel de severidad (ej. Crítico, Alto, Medio, Bajo)"
+    },
+    {
+      "key": "summary",
+      "label": "🐞 Resumen del problema",
+      "type": "string",
+      "required": true,
+      "description": "Descripción clara y concisa de la falla detectada"
+    },
+    {
+      "key": "stepsToReproduce",
+      "label": "🧪 Pasos para reproducir",
+      "type": "string[]",
+      "required": true,
+      "description": "Secuencia de pasos para reproducir el fallo"
+    },
+    {
+      "key": "proposedFix",
+      "label": "💡 Solución o mitigación propuesta",
+      "type": "string",
+      "required": false,
+      "description": "Mitigación temporal o solución técnica sugerida"
+    }
+  ],
+  "headerTemplate": "🚨 <b>Reporte de Incidente / Bug</b> | <code>{{git.repo}}</code>\n👤 <b>Reportado por:</b> {{git.author}} | 🌿 <b>Rama:</b> <code>{{git.branch}}</code> ({{git.shortHash}})"
+}

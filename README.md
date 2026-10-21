@@ -1,111 +1,115 @@
-# tg-dev-bridge 🚀
+# tg-dev-bridge 🚀 (Bot Factory & Template Engine)
 
-Herramienta de **ChatOps** desacoplada (servidor **MCP** y **CLI**) diseñada para servir como puente de comunicación directo entre agentes de desarrollo en terminal (**Claude Code**, **OpenCode**, **AgU**) y el grupo de Telegram de tu equipo o startup.
+Puente de **ChatOps** desacoplado y extensible (**CLI + MCP Server**) diseñado para conectar agentes de desarrollo en terminal (**Claude Code**, **OpenCode**, **AgU**) y pipelines de CI/CD con grupos de Telegram.
 
-Al terminar una tarea, el agente invoca esta herramienta para publicar un reporte estructurado y seguro en HTML con el autor, repositorio, rama, commit, cambios completados, próximos pasos y bloqueos pendientes.
+Evolucionado como **Template Engine & Bot Factory**: permite crear e instanciar nuevos bots (para reportes de desarrollo, anuncios de versiones, alertas de incidentes, QA o distintos clientes) mediante archivos declarativos JSON en `profiles/`, sin tocar una sola línea del core.
 
 ---
 
-## 🏛️ Arquitectura
+## 🏛️ Patrones y Arquitectura
 
-El proyecto sigue estrictamente los principios de **Clean Architecture (Hexagonal / Ports & Adapters)**:
+Diseñado bajo **Clean Architecture** y principios **SOLID** (especialmente *Open/Closed Principle*):
 
 ```text
+profiles/                               # Perfiles declarativos de bots
+├── dev-update.json                     # Bot de reporte de tareas de desarrollo (default)
+├── release-notes.json                  # Bot de anuncios de despliegues y versiones
+└── bug-report.json                     # Bot de alertas de incidentes / errores
+
 src/
-├── domain/                      # Núcleo de negocio inmutable (sin dependencias externas)
-│   ├── entities/DevUpdate.ts    # Entidad inmutable del reporte con validaciones
-│   └── ports/                   # Contratos de interfaces
+├── domain/                             # Entidades puras y contratos
+│   ├── entities/BotProfile.ts          # Esquemas Zod y tipos del perfil y campos
+│   ├── entities/DevUpdate.ts           # Entidad inmutable de desarrollo
+│   └── ports/                          # Puertos (Strategy Pattern)
+│       ├── ITemplateEngine.ts          # Contrato del motor de renderizado
+│       ├── IDynamicNotificationService.ts # Envío con credenciales dinámicas
 │       ├── INotificationService.ts
 │       └── IGitContextProvider.ts
 │
-├── application/                 # Casos de uso y DTOs
-│   ├── dtos/PublishDevUpdateDTO.ts
-│   └── use-cases/PublishDevUpdateUseCase.ts
+├── application/                        # Casos de uso
+│   ├── use-cases/PublishReportUseCase.ts # Orquestador genérico por perfil
+│   └── use-cases/PublishDevUpdateUseCase.ts # Retrocompatibilidad
 │
-├── infrastructure/              # Adaptadores de tecnología concreta
-│   ├── config/env.ts            # Validación con Zod (.env local o global)
-│   ├── git/LocalGitAdapter.ts   # Contexto Git con child_process seguro y fallbacks
+├── infrastructure/                     # Adaptadores de tecnología
+│   ├── config/ProfileLoader.ts         # Factory/Loader de perfiles locales o empaquetados
+│   ├── config/TelegramProfileResolver.ts # Resolución de tokens por perfil
+│   ├── git/LocalGitAdapter.ts          # Contexto seguro de Git (repo, branch, hash, author)
 │   └── telegram/
-│       ├── MessageFormatter.ts  # Formateo y sanitización estricta de HTML
-│       └── TelegramAdapter.ts   # Cliente HTTP nativo (fetch) para Telegram API
+│       ├── DynamicHtmlFormatter.ts     # Template Engine nativo con sanitización HTML
+│       └── TelegramAdapter.ts          # Cliente HTTP nativo con fetch
 │
-├── presentation/                # Interfaces de entrada (Dual Mode)
-│   ├── cli/index.ts             # Binario ejecutable con commander (flags o stdin)
-│   └── mcp/server.ts            # Servidor MCP stdio (@modelcontextprotocol/sdk)
-│
-└── shared/                      # Tipos, errores y utilitarios transversales
-    ├── errors/
-    └── types/Result.ts
+└── presentation/                       # Interfaces dinámicas (Dual Mode)
+    ├── cli/
+    │   ├── index.ts                    # CLI con inyección dinámica de flags
+    │   └── commands/initBot.ts         # Scaffolding de nuevos bots
+    └── mcp/server.ts                   # Servidor MCP stdio con Dynamic Schema Injection
 ```
 
 ---
 
-## ⚙️ Configuración y Variables de Entorno
+## ⚡ Setup Rápido (En 1 Minuto)
 
-Crea un archivo `.env` en el directorio donde ejecutes la herramienta o de forma global en `~/.config/tg-dev-bridge/.env`:
+### 1. Clonar y configurar
+```bash
+git clone <tu-repo> tg-dev-bridge
+cd tg-dev-bridge
+./scripts/setup-template.sh
+```
+
+El script verificará Node 20+, instalará dependencias con `pnpm`, compilará el código y enlazará globalmente los comandos `tg-bridge` y `tg-dev-bridge`.
+
+### 2. Configurar variables de entorno (`.env`)
+Edita tu `.env` (o crea un archivo global en `~/.config/tg-dev-bridge/.env`):
 
 ```bash
-# Telegram Bot Token (creado con @BotFather)
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-
-# ID del grupo o supergrupo de Telegram
 TELEGRAM_CHAT_ID=-1001234567890
 
-# Opcional: ID de tema/topic si el supergrupo tiene foros activados
+# Opcional: ID de Topic en supergrupos con foros
 TELEGRAM_THREAD_ID=42
-
-# Opcional: Nombre de autor de fallback si Git no tiene configurado user.name
-DEV_NAME=Developer
 ```
 
 ---
 
-## 📦 Instalación y Setup
+## 🛠️ Cómo Crear un Nuevo Bot (`tg-bridge init`)
 
-### 1. Requisitos
-- Node.js >= 20.0.0
-- `pnpm` >= 9.0.0
-
-### 2. Instalar y Compilar
-```bash
-pnpm install
-pnpm run build
-```
-
-### 3. Enlace Global para Terminal (OpenCode, AgU, Git Hooks)
-Para que el comando `tg-dev-bridge` esté disponible globalmente en tu terminal:
+Para generar un nuevo perfil de bot en segundos:
 
 ```bash
-pnpm link --global
+tg-bridge init deploy-alert --preset release-notes
 ```
 
-Ahora puedes probarlo desde cualquier directorio:
-```bash
-tg-dev-bridge --help
-```
+Presets disponibles:
+- `dev-update` — Reportes de tareas completadas y próximos pasos.
+- `release-notes` — Versión, highlights, breaking changes y enlace de despliegue.
+- `bug-report` — Severidad, resumen, pasos para reproducir y mitigación.
+- `custom` — Plantilla genérica editable con título, detalles y notas.
+
+El comando creará `profiles/deploy-alert.json`. Puedes personalizar los campos y la plantilla según tus necesidades.
 
 ---
 
-## 🤖 Registro en Claude Code (MCP Server)
+## 🤖 Registro en Claude Code (MCP Server Dinámico)
 
-Para registrar el servidor MCP de `tg-dev-bridge` en **Claude Code** y que pueda invocar la herramienta `send_dev_update` automáticamente:
+Cada perfil puede registrarse como un servidor MCP independiente. Claude Code leerá el esquema dinámicamente y sabrá con qué campos invocarlo:
 
+### Bot de Desarrollo (default):
 ```bash
-claude mcp add tg-dev-bridge node /ruta/absoluta/a/tg-dev-bridge/dist/presentation/mcp/server.js
+claude mcp add dev-tracker node /ruta/a/tg-dev-bridge/dist/presentation/mcp/server.js
 ```
 
-O si usas el archivo de configuración `~/.claude/claude_desktop_config.json` o `~/.config/claude/config.json`:
+### Bot de Notas de Versión:
+```bash
+claude mcp add release-bot node /ruta/a/tg-dev-bridge/dist/presentation/mcp/server.js --profile release-notes
+```
 
+### O en tu `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "tg-dev-bridge": {
+    "tg-release": {
       "command": "node",
-      "args": ["/ruta/absoluta/a/tg-dev-bridge/dist/presentation/mcp/server.js"],
-      "env": {
-        "TELEGRAM_BOT_TOKEN": "tu_token",
-        "TELEGRAM_CHAT_ID": "-1001234567890"
-      }
+      "args": ["/ruta/a/tg-dev-bridge/dist/presentation/mcp/server.js", "--profile", "release-notes"]
     }
   }
 }
@@ -115,46 +119,74 @@ O si usas el archivo de configuración `~/.claude/claude_desktop_config.json` o 
 
 ## 🖥️ Uso desde Terminal (CLI)
 
-### Con flags individuales
+### 1. Bot por defecto (`dev-update`)
 ```bash
-tg-dev-bridge \
-  -d "Refactorizado módulo de autenticación" "Añadidas pruebas unitarias" \
-  -n "Implementar refresh token" "Actualizar documentación de API" \
-  -b "Pendiente definir tiempo de expiración del JWT"
+tg-bridge \
+  -d "Implementado sistema de perfiles" "Añadido comando init" \
+  -n "Configurar alertas de CI/CD"
 ```
 
-### Vía JSON con piping (stdin)
+### 2. Bot de Notas de Versión (`release-notes`)
 ```bash
-echo '{
-  "completedChanges": ["Setup de base de datos", "Migraciones iniciales"],
-  "nextSteps": ["Crear endpoints de usuarios"]
-}' | tg-dev-bridge --stdin
+tg-bridge --profile release-notes \
+  --version "v2.0.0" \
+  --highlights "Template engine nativo" "Soporte multi-perfil" \
+  --deploy-url "https://github.com/usuario/repo"
+```
+
+### 3. Vía JSON por `stdin`
+```bash
+cat << 'EOF' | tg-bridge --profile bug-report --stdin
+{
+  "severity": "Crítico",
+  "summary": "Falla en procesamiento de pagos con tarjeta",
+  "stepsToReproduce": ["Intentar checkout con tarjeta", "Error 500 en /api/charge"]
+}
+EOF
 ```
 
 ---
 
-## 💬 Formato del Mensaje en Telegram
+## 📂 Anatomía de un Archivo de Perfil (`profiles/*.json`)
 
-El mensaje generado y enviado a Telegram luce así:
-
-```html
-🚀 <b>Actualización de Desarrollo</b> | <code>mi-proyecto</code>
-👤 <b>Dev:</b> Juan Pérez | 🌿 <b>Rama:</b> <code>feature/auth</code> (<code>a1b2c3d</code>)
-
-✅ <b>Cambios realizados:</b>
-• Refactorizado módulo de autenticación
-• Añadidas pruebas unitarias
-
-⏭️ <b>Siguientes pasos:</b>
-• Implementar refresh token
-• Actualizar documentación de API
-
-⚠️ <b>Bloqueos / Notas:</b>
-• Pendiente definir tiempo de expiración del JWT
+```json
+{
+  "botId": "mi-bot",
+  "toolName": "send_mi_notificacion",
+  "toolDescription": "Envía una notificación personalizada a Telegram",
+  "telegram": {
+    "tokenEnvVar": "TELEGRAM_BOT_TOKEN",
+    "chatIdEnvVar": "TELEGRAM_CHAT_ID",
+    "threadIdEnvVar": "TELEGRAM_THREAD_ID"
+  },
+  "contextProviders": {
+    "includeGitInfo": true,
+    "includeTimestamp": true
+  },
+  "fields": [
+    {
+      "key": "titulo",
+      "label": "📌 Título",
+      "type": "string",
+      "required": true,
+      "description": "Título del aviso"
+    },
+    {
+      "key": "detalles",
+      "label": "📝 Puntos clave",
+      "type": "string[]",
+      "required": true,
+      "description": "Lista de viñetas"
+    }
+  ],
+  "headerTemplate": "🚀 <b>{{titulo}}</b> | <code>{{git.repo}}</code>\n🌿 <b>Rama:</b> <code>{{git.branch}}</code> ({{git.shortHash}})"
+}
 ```
 
 ---
 
-## 📋 Reglas para Agentes
+## 🌟 Cómo Usarlo como GitHub Template
 
-Revisa [`CLAUDE.md`](./CLAUDE.md) y [`.agent-rules.md`](./.agent-rules.md) para ver las directivas listas para copiar y pegar en los repositorios de tu equipo.
+1. En GitHub, ve a **Settings** de tu repositorio y activa la casilla **"Template repository"**.
+2. **Opción A (Monorepo de Bots):** Mantén este repo como centro de ChatOps de tu startup, agregando perfiles en `profiles/` para cada canal o propósito.
+3. **Opción B (Repositorio independiente):** Haz clic en **"Use this template"** en GitHub para crear repositorios aislados para clientes o proyectos específicos.

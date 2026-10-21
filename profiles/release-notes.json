@@ -1,0 +1,45 @@
+{
+  "botId": "release-notes",
+  "toolName": "send_release_notes",
+  "toolDescription": "Publica el anuncio de una nueva versión o despliegue en Telegram",
+  "telegram": {
+    "tokenEnvVar": "TELEGRAM_BOT_TOKEN",
+    "chatIdEnvVar": "TELEGRAM_CHAT_ID",
+    "threadIdEnvVar": "TELEGRAM_THREAD_ID"
+  },
+  "contextProviders": {
+    "includeGitInfo": true,
+    "includeTimestamp": true
+  },
+  "fields": [
+    {
+      "key": "version",
+      "label": "🏷️ Versión",
+      "type": "string",
+      "required": true,
+      "description": "Número de versión o tag publicado (ej. v1.2.0)"
+    },
+    {
+      "key": "highlights",
+      "label": "✨ Novedades principales",
+      "type": "string[]",
+      "required": true,
+      "description": "Lista de funcionalidades y mejoras incluidas en este release"
+    },
+    {
+      "key": "breakingChanges",
+      "label": "💥 Breaking Changes",
+      "type": "string[]",
+      "required": false,
+      "description": "Cambios incompatibles o acciones manuales requeridas"
+    },
+    {
+      "key": "deployUrl",
+      "label": "🔗 Enlace del despliegue",
+      "type": "string",
+      "required": false,
+      "description": "URL al ambiente desplegado o notas de versión completas"
+    }
+  ],
+  "headerTemplate": "📦 <b>Lanzamiento de Versión</b> | <code>{{git.repo}}</code>\n🌿 <b>Rama:</b> <code>{{git.branch}}</code> ({{git.shortHash}}) | 🕒 <code>{{timestamp}}</code>"
+}

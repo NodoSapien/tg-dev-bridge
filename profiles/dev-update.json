@@ -1,0 +1,38 @@
+{
+  "botId": "dev-tracker",
+  "toolName": "send_dev_update",
+  "toolDescription": "Envía el resumen de cambios realizados y siguientes pasos al grupo de Telegram",
+  "telegram": {
+    "tokenEnvVar": "TELEGRAM_BOT_TOKEN",
+    "chatIdEnvVar": "TELEGRAM_CHAT_ID",
+    "threadIdEnvVar": "TELEGRAM_THREAD_ID"
+  },
+  "contextProviders": {
+    "includeGitInfo": true,
+    "includeTimestamp": false
+  },
+  "fields": [
+    {
+      "key": "completedChanges",
+      "label": "✅ Cambios realizados",
+      "type": "string[]",
+      "required": true,
+      "description": "Lista de cambios implementados en la sesión de trabajo"
+    },
+    {
+      "key": "nextSteps",
+      "label": "⏭️ Siguientes pasos",
+      "type": "string[]",
+      "required": true,
+      "description": "Lista de qué cambios siguen a continuación"
+    },
+    {
+      "key": "blockers",
+      "label": "⚠️ Bloqueos / Notas",
+      "type": "string[]",
+      "required": false,
+      "description": "Dudas o bloqueos que requieran atención"
+    }
+  ],
+  "headerTemplate": "🚀 <b>Actualización de Desarrollo</b> | <code>{{git.repo}}</code>\n👤 <b>Dev:</b> {{git.author}} | 🌿 <b>Rama:</b> <code>{{git.branch}}</code> ({{git.shortHash}})"
+}

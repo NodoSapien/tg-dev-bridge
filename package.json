@@ -1,0 +1,40 @@
+{
+  "name": "tg-dev-bridge",
+  "version": "1.0.0",
+  "description": "Bridge de ChatOps para notificaciones de agentes de desarrollo a Telegram",
+  "type": "module",
+  "bin": {
+    "tg-dev-bridge": "./dist/presentation/cli/index.js",
+    "tg-dev-bridge-mcp": "./dist/presentation/mcp/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev:cli": "tsx src/presentation/cli/index.ts",
+    "dev:mcp": "tsx src/presentation/mcp/server.ts"
+  },
+  "keywords": [
+    "chatops",
+    "telegram",
+    "mcp",
+    "cli",
+    "agentic",
+    "claude-code"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

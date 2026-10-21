@@ -22,8 +22,8 @@ export class TelegramAdapter implements INotificationService, IDynamicNotificati
   constructor(private readonly config?: AppConfig) {}
 
   public static sanitizeSensitiveText(text: string, botToken?: string): string {
-    let sanitized = text.replace(/\/bot[0-9]{8,11}:[a-zA-Z0-9_-]{35}/g, "/bot[REDACTED_BOT_TOKEN]");
-    sanitized = sanitized.replace(/\b[0-9]{8,11}:[a-zA-Z0-9_-]{35}\b/g, "[REDACTED_BOT_TOKEN]");
+    let sanitized = text.replace(/\/bot[0-9]{8,11}:[a-zA-Z0-9_-]{30,36}/g, "/bot[REDACTED_BOT_TOKEN]");
+    sanitized = sanitized.replace(/\b[0-9]{8,11}:[a-zA-Z0-9_-]{30,36}\b/g, "[REDACTED_BOT_TOKEN]");
     if (botToken && botToken.trim()) {
       sanitized = sanitized.replaceAll(botToken.trim(), "[REDACTED_BOT_TOKEN]");
     }

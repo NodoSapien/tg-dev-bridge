@@ -1,5 +1,19 @@
+# Dependencies & Build Outputs
 node_modules/
 dist/
-.env
 *.log
+*.dump
 .DS_Store
+
+# Environment and Secrets (permitir exclusivamente .env.example)
+.env
+.env.*
+!.env.example
+
+# Local / Private Bot Profiles
+profiles/*.local.json
+profiles/*.private.json
+
+# Tooling and caches
+.cache/
+.pnpm-store/

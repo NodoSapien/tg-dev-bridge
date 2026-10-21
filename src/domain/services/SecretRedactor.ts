@@ -47,7 +47,7 @@ export class SecretRedactor {
     },
     {
       name: "Telegram Bot Token",
-      regex: /\b[0-9]{8,11}:[a-zA-Z0-9_-]{35}\b/,
+      regex: /\b[0-9]{8,11}:[a-zA-Z0-9_-]{30,36}\b/,
     },
   ];
 

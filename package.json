@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test:security": "tsx scripts/verify-security.ts",
     "dev:cli": "tsx src/presentation/cli/index.ts",
     "dev:mcp": "tsx src/presentation/mcp/server.ts"
   },

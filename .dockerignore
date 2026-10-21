@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.ai-toolkit
+profiles/*.local.json
+scripts/verify-security.ts
+README.md
+CLAUDE.md
+SECURITY_AUDIT.md

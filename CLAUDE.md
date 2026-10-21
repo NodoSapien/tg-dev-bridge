@@ -1,97 +1,97 @@
-# Instrucciones para Agentes de Desarrollo (Claude Code / OpenCode / AgU)
+# 🤖 Protocolo Operativo para Agentes de IA (Claude Code, OpenCode, AgU, Cursor)
 
-Este repositorio y los proyectos que integran `tg-dev-bridge` operan bajo una **arquitectura multi-bot y template engine** para notificar al equipo en Telegram al concluir tareas, lanzar versiones o reportar incidentes.
+Este archivo contiene el contexto mandatorio para cualquier agente de inteligencia artificial que opere dentro de este repositorio o en proyectos que utilicen `tg-dev-bridge` como puente de ChatOps hacia Telegram.
 
 ---
 
-## 🔔 Perfiles de Bots Disponibles
+## 🎯 1. Propósito del Proyecto
+`tg-dev-bridge` es un motor extensible (**CLI + MCP Server**) diseñado para que agentes de desarrollo publiquen automáticamente reportes estructurados y sanitizados en Telegram cuando concluyen tareas, lanzan versiones o reportan incidentes.
 
-La herramienta cuenta con perfiles declarativos en `profiles/`:
+Opera bajo **Clean Architecture** y principios **Open/Closed**: agregar un nuevo bot nunca requiere tocar código fuente en `src/`, solo crear o editar perfiles JSON en `profiles/`.
 
-| Perfil | MCP Tool | CLI Flag | Propósito |
+---
+
+## ⛔ 2. Reglas Innegociables de Ingeniería (Zero Tolerance)
+
+1. **Gestor de paquetes obligatorio:** Usa **exclusivamente `pnpm`**.
+   - ✅ `pnpm install`, `pnpm run build`, `pnpm run typecheck`, `pnpm run test:security`
+   - ❌ **TERMINANTEMENTE PROHIBIDO:** `npm`, `npx`, `yarn`.
+2. **DLP Estricto (Data Loss Prevention):**
+   - El sistema cuenta con un interceptor activo (`SecretRedactor`) que analiza todo el payload antes de enviarlo.
+   - **NUNCA** incluyas claves API, tokens de GitHub (`ghp_`), OpenAI (`sk-`), AWS keys (`AKIA`), JWTs, URLs de base de datos con contraseñas o claves privadas en `completedChanges`, `nextSteps` ni en ningún campo.
+   - Si la herramienta responde con `🛡️ BLOQUEO DE SEGURIDAD (DLP)`, **no intentes evadir el filtro**: reescribe tu reporte eliminando la credencial expuesta.
+3. **Calidad de Tipos:** TypeScript configurado en `"strict": true` con `"exactOptionalPropertyTypes": true`. No uses `any`.
+
+---
+
+## 🧭 3. Árbol de Decisión de Perfiles
+
+Identifica la situación actual y usa el perfil correspondiente:
+
+| Situación | Perfil Activo | Herramienta MCP | Comando CLI |
 |---|---|---|---|
-| `dev-update` (default) | `send_dev_update` | `tg-bridge` (o `--profile dev-update`) | Reporte de cambios y siguientes pasos al terminar una tarea |
-| `release-notes` | `send_release_notes` | `tg-bridge --profile release-notes` | Anuncio de nueva versión, novedades y enlaces |
-| `bug-report` | `send_bug_report` | `tg-bridge --profile bug-report` | Alerta de incidente o reporte estructurado de bugs |
+| **Terminaste un feature, bugfix o refactor** | `dev-update` *(Default)* | `send_dev_update` | `tg-bridge -d "..." -n "..."` |
+| **Se preparó o desplegó una nueva versión** | `release-notes` | `send_release_notes` | `tg-bridge --profile release-notes --version "..." --highlights "..."` |
+| **Detectaste un fallo crítico o bloqueo** | `bug-report` | `send_bug_report` | `tg-bridge --profile bug-report --severity "..." --summary "..."` |
+| **El usuario pide crear un bot nuevo** | N/A | Subcomando CLI | `tg-bridge init <nombre> --preset <preset>` |
 
 ---
 
-## 🛠️ Modos de Invocación
+## 📋 4. Protocolo al Concluir una Tarea
 
-### 1. Perfil por Defecto: Reporte de Desarrollo (`dev-update`)
+Cuando el usuario te indique que concluyas una tarea o des por terminada una sesión de trabajo:
 
-#### Vía MCP Tool (Claude Code):
-Invoca `send_dev_update`:
+### Paso 1: Deducir los cambios completados (`completedChanges`)
+- Revisa los archivos que modificaste en la sesión mediante `git status` o el historial de cambios.
+- Resume en viñetas técnicas claras y concisas lo implementado (sin incluir secretos).
+
+### Paso 2: Deducir los siguientes pasos (`nextSteps`)
+- Inspecciona si existe un archivo `TODO.md`, `ROADMAP.md` o el spec entregado por el usuario.
+- Si existen tareas pendientes, toma las siguientes inmediatas.
+- Si no hay archivo de tareas, deduce lógicamente las siguientes mejoras necesarias o pasos de verificación.
+
+### Paso 3: Identificar bloqueos (`blockers` - opcional)
+- Si requieres confirmación del usuario, una clave externa o una decisión de diseño pendiente, repórtala en `blockers`.
+
+### Paso 4: Notificar al equipo
+
+#### Opción A: Vía MCP Tool (Recomendado si Claude Code tiene la herramienta registrada)
 ```json
 {
   "completedChanges": [
-    "Implementado el motor de plantillas dinámico DynamicHtmlFormatter",
-    "Añadido subcomando de scaffolding init en el CLI"
+    "Implementado el motor de plantillas DynamicHtmlFormatter",
+    "Añadido escáner DLP SecretRedactor con modo estricto"
   ],
   "nextSteps": [
-    "Documentar creación de nuevos bots en README.md",
-    "Configurar repositorio como GitHub Template"
+    "Ejecutar suite de tests con pnpm run test:security",
+    "Crear tag de versión v2.0.0"
   ],
   "blockers": []
 }
 ```
 
-#### Vía CLI (Terminal / OpenCode / AgU):
+#### Opción B: Vía CLI en terminal
 ```bash
 tg-bridge \
-  -d "Implementado motor DynamicHtmlFormatter" "Añadido comando init" \
-  -n "Documentar creación de bots" "Configurar GitHub Template"
+  -d "Implementado el motor de plantillas DynamicHtmlFormatter" "Añadido escáner DLP SecretRedactor" \
+  -n "Ejecutar suite de tests con pnpm run test:security" "Crear tag v2.0.0"
 ```
+
+*Nota:* No calcules la rama, el commit ni el autor; `tg-bridge` los deduce automáticamente de Git de forma segura.
 
 ---
 
-### 2. Perfil de Lanzamiento: Notas de Versión (`release-notes`)
+## 🧪 5. Scripts de Validación del Repositorio
 
-#### Vía MCP Tool:
-Registrado con `--profile release-notes`, invoca `send_release_notes`:
-```json
-{
-  "version": "v2.0.0",
-  "highlights": [
-    "Arquitectura extensible con perfiles declarativos",
-    "Soporte dinámico para MCP Server y CLI",
-    "Comando de scaffolding tg-bridge init"
-  ],
-  "breakingChanges": [
-    "El flag de versión interna de la app ahora es -v, --cli-version para no colisionar con versiones de releases"
-  ],
-  "deployUrl": "https://github.com/usuario/tg-dev-bridge/releases/tag/v2.0.0"
-}
-```
-
-#### Vía CLI:
-```bash
-tg-bridge --profile release-notes \
-  --version "v2.0.0" \
-  --highlights "Arquitectura extensible de perfiles" "Scaffolding tg-bridge init" \
-  --deploy-url "https://github.com/usuario/tg-dev-bridge"
-```
-
----
-
-### 3. Vía JSON directo (stdin)
-Cualquier perfil acepta su payload por `stdin`:
+Antes de declarar cualquier cambio en este código como completado, ejecuta:
 
 ```bash
-cat << 'EOF' | tg-bridge --profile bug-report --stdin
-{
-  "severity": "Alta",
-  "summary": "Falla de autenticación en endpoints protegidos",
-  "stepsToReproduce": ["Enviar token expirado", "Verificar que responde 500 en lugar de 401"]
-}
-EOF
-```
+# 1. Comprobación estricta de tipos
+pnpm run typecheck
 
----
+# 2. Compilación de artefactos en dist/
+pnpm run build
 
-## ⚙️ Creación de Nuevos Bots
-Para crear un nuevo bot en cualquier proyecto:
-```bash
-tg-bridge init mi-bot --preset <dev-update|release-notes|bug-report|custom>
+# 3. Suite completa de seguridad (DLP, Path Traversal, Redaction, Zod Limits)
+pnpm run test:security
 ```
-Esto genera `profiles/mi-bot.json` listo para usar inmediatamente.
